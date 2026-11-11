@@ -1,14 +1,14 @@
 /* Ananda Travels – service worker
    - Works from any folder/URL (all paths are relative to the SW scope)
    - Change VERSION whenever you want every visitor to get a fresh cache */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CORE_CACHE = `ananda-core-${VERSION}`;
 const RUNTIME_CACHE = `ananda-runtime-${VERSION}`;
 const RUNTIME_LIMIT = 120;
 
 const SCOPE = self.registration.scope;
 const url = p => new URL(p, SCOPE).href;
-const PRECACHE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(url);
+const PRECACHE = ['./', 'index.html', 'manifest.webmanifest', 'logo.png'].map(url);
 const NEVER_CACHE = ['api/', 'admin']; // backend routes always go to the network
 
 self.addEventListener('install', event => {
@@ -52,6 +52,18 @@ async function navigate(request) {
   }
 }
 
+/* manifest: always ask the network first so icon/name changes show up */
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const res = await fetch(request);
+    if (res && res.ok) cache.put(request, res.clone());
+    return res;
+  } catch (err) {
+    return (await cache.match(request)) || Response.error();
+  }
+}
+
 /* static files: answer from cache instantly, refresh it in the background */
 async function staleWhileRevalidate(request, cacheName, fetchRequest) {
   const cache = await caches.open(cacheName);
@@ -79,6 +91,10 @@ self.addEventListener('fetch', event => {
     if (u.pathname.endsWith('/sw.js')) return;
     if (req.mode === 'navigate') {
       event.respondWith(navigate(req));
+      return;
+    }
+    if (/manifest\.webmanifest$/.test(u.pathname)) {
+      event.respondWith(networkFirst(req, CORE_CACHE));
       return;
     }
     event.respondWith(staleWhileRevalidate(req, CORE_CACHE));
